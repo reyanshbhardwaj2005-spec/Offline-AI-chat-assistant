@@ -139,6 +139,8 @@ public class MainActivity extends AppCompatActivity {
     // ---- voice
     private VoiceController voice;
     private Button micBtn;
+    private VoiceListeningDialog voiceDialog;   // "Speak now" popup
+    private View emptyState;                    // greeting shown when the chat is empty
     private Spinner voiceLangSpinner;
     private SwitchCompat offlineOnlySwitch, autoSendSwitch;
     private final ActivityResultLauncher<String> micPermissionLauncher =
@@ -238,6 +240,7 @@ public class MainActivity extends AppCompatActivity {
         maxTokensSeek = findViewById(R.id.maxTokensSeek);
         tempSeek = findViewById(R.id.tempSeek);
         chatList = findViewById(R.id.chatList);
+        emptyState = findViewById(R.id.emptyState);
 
         // ---- chat format spinner
         ArrayAdapter<String> sa = new ArrayAdapter<>(this,
@@ -264,6 +267,12 @@ public class MainActivity extends AppCompatActivity {
         chatList.setItemAnimator(null);
         chatAdapter = new ChatAdapter(messages, m -> voice.toggleSpeak(m));
         chatList.setAdapter(chatAdapter);
+        chatAdapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override public void onChanged() { updateEmptyState(); }
+            @Override public void onItemRangeInserted(int start, int count) { updateEmptyState(); }
+            @Override public void onItemRangeRemoved(int start, int count) { updateEmptyState(); }
+        });
+        updateEmptyState();
 
         sendBtn.setOnClickListener(v -> {
             if (generating) llama.stop();
@@ -366,21 +375,32 @@ public class MainActivity extends AppCompatActivity {
         offlineOnlySwitch = findViewById(R.id.offlineOnlySwitch);
         autoSendSwitch = findViewById(R.id.autoSendSwitch);
 
+        // tapping outside the popup / pressing back stops listening
+        voiceDialog = new VoiceListeningDialog(this, () -> voice.cancelListening());
+
         voice = new VoiceController(this, prefs, new VoiceController.Callbacks() {
             @Override public void onListeningChanged(boolean listening) {
-                micBtn.setText(listening ? "⏹" : "🎤");
+                // micBtn now uses a drawable background, so no emoji text is set on it
                 input.setHint(listening ? "Listening…" : "Message");
-                if (listening) statusText.setText("Listening…");
+                if (listening) {
+                    statusText.setText("Listening…");
+                    hideKeyboard();
+                    voiceDialog.show();                 // popup appears
+                } else {
+                    voiceDialog.dismiss();              // user stopped speaking -> popup disappears
+                }
             }
             @Override public void onPartialText(String text) {
                 setInputText(text);
             }
             @Override public void onFinalText(String text) {
+                voiceDialog.dismiss();
                 setInputText(text);
                 statusText.setText("Voice captured. Edit it or tap Send.");
                 if (autoSendSwitch.isChecked()) sendMessage();
             }
             @Override public void onMessage(String message) {
+                voiceDialog.dismiss();
                 statusText.setText(message);
                 Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
             }
@@ -440,6 +460,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (voiceDialog != null) voiceDialog.dismiss();
         llama.stop();
         executor.execute(() -> {
             llama.close();
@@ -1016,7 +1037,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void setGenerating(boolean g) {
         generating = g;
-        sendBtn.setText(g ? "Stop" : "Send");
+        sendBtn.setText(g ? "■" : "↑");
         if (g) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
@@ -1270,10 +1291,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
+        if (voiceDialog != null) voiceDialog.dismiss();
         if (voice != null) {
             voice.cancelListening();
             voice.stopSpeaking();
         }
+    }
+
+    /** Shows the "What shall we think through?" greeting only while the chat has no messages. */
+    private void updateEmptyState() {
+        if (emptyState != null) emptyState.setVisibility(messages.isEmpty() ? View.VISIBLE : View.GONE);
     }
 
     private void setInputText(String t) {

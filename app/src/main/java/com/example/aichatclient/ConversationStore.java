@@ -26,8 +26,18 @@ public class ConversationStore extends SQLiteOpenHelper {
         }
     }
 
+    public static class Summary {
+        public final String text;
+        public final int covered;      // how many messages from the start the summary covers
+
+        Summary(String text, int covered) {
+            this.text = text;
+            this.covered = covered;
+        }
+    }
+
     public ConversationStore(Context ctx) {
-        super(ctx, "chats.db", null, 1);
+        super(ctx, "chats.db", null, 2);
     }
 
     @Override
@@ -45,10 +55,22 @@ public class ConversationStore extends SQLiteOpenHelper {
                 + "error INTEGER NOT NULL DEFAULT 0,"
                 + "created_at INTEGER NOT NULL)");
         db.execSQL("CREATE INDEX idx_messages_conv ON messages(conv_id, id)");
+        createSummaries(db);
     }
 
     @Override
-    public void onUpgrade(SQLiteDatabase db, int oldV, int newV) { }
+    public void onUpgrade(SQLiteDatabase db, int oldV, int newV) {
+        if (oldV < 2) createSummaries(db);
+    }
+
+    private static void createSummaries(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS summaries ("
+                + "conv_id INTEGER PRIMARY KEY,"
+                + "summary TEXT NOT NULL,"
+                + "covered INTEGER NOT NULL)");
+    }
+
+    // ------------------------------------------------------------ conversations
 
     public synchronized long createConversation(String title) {
         long now = System.currentTimeMillis();
@@ -95,7 +117,6 @@ public class ConversationStore extends SQLiteOpenHelper {
         return out;
     }
 
-    /** Most recently active first. */
     public synchronized List<Conv> listConversations() {
         List<Conv> out = new ArrayList<>();
         try (Cursor c = getReadableDatabase().rawQuery(
@@ -118,6 +139,7 @@ public class ConversationStore extends SQLiteOpenHelper {
         try {
             String[] arg = {String.valueOf(id)};
             db.delete("messages", "conv_id=?", arg);
+            db.delete("summaries", "conv_id=?", arg);
             db.delete("conversations", "id=?", arg);
             db.setTransactionSuccessful();
         } finally {
@@ -130,10 +152,31 @@ public class ConversationStore extends SQLiteOpenHelper {
         db.beginTransaction();
         try {
             db.delete("messages", null, null);
+            db.delete("summaries", null, null);
             db.delete("conversations", null, null);
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();
         }
+    }
+
+    // ------------------------------------------------------------ summaries
+
+    public synchronized Summary getSummary(long convId) {
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT summary, covered FROM summaries WHERE conv_id=?",
+                new String[]{String.valueOf(convId)})) {
+            if (c.moveToFirst()) return new Summary(c.getString(0), c.getInt(1));
+        }
+        return null;
+    }
+
+    public synchronized void setSummary(long convId, String text, int covered) {
+        ContentValues cv = new ContentValues();
+        cv.put("conv_id", convId);
+        cv.put("summary", text);
+        cv.put("covered", covered);
+        getWritableDatabase().insertWithOnConflict("summaries", null, cv,
+                SQLiteDatabase.CONFLICT_REPLACE);
     }
 }

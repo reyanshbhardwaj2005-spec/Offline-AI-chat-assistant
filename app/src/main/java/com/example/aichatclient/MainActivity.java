@@ -63,8 +63,6 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "AiChat";
     private static final int N_CTX = 4096;
     private static final int N_THREADS = 4;
-    private static final int HISTORY_CHAR_BUDGET = 2500;
-    private static final int MEMORY_CHAR_BUDGET = 1500;
     private static final int TOP_K = 5;
     private static final float MIN_SIM = 0.30f;
 
@@ -77,6 +75,18 @@ public class MainActivity extends AppCompatActivity {
                     + "the message clearly states. If there are none, write exactly: NONE";
     private static final Pattern REMEMBER = Pattern.compile(
             "(?is)^\\s*(?:please\\s+)?remember(?:\\s+that)?\\s*[:,]?\\s+(.+)$");
+    // ---- context builder + rolling summary
+    private static final int SUMMARY_TRIGGER_CHARS = 2000;   // fold when unsummarized chat gets this long
+    private static final int SUMMARY_KEEP_CHARS = 900;       // newest chat kept verbatim after folding
+    private static final int MAX_EPISODIC = 400;             // chat memories kept
+    private static final String SUMMARY_PROMPT =
+            "You keep a running summary of a conversation between a user and an AI assistant. "
+                    + "Update the summary with the new messages. Keep names, numbers, dates, "
+                    + "decisions, preferences and unfinished tasks. Write at most 120 words as "
+                    + "plain sentences. Output only the updated summary.";
+    private static final Pattern FORGET = Pattern.compile(
+            "(?is)^\\s*(?:please\\s+)?forget(?:\\s+that|\\s+about)?\\s*[:,]?\\s+"
+                    + "(?!(?:it|this|everything)\\b)(.+)$");
 
     // ---- views
     private DrawerLayout drawerLayout;
@@ -116,6 +126,12 @@ public class MainActivity extends AppCompatActivity {
     private final List<String> memoryLabels = new ArrayList<>();
     private ArrayAdapter<String> memoryAdapter;
     private int memoryCount = 0;
+    // ---- context builder state (for the open conversation)
+    private String convSummary = "";
+    private int convCovered = 0;                 // how many messages the summary already covers
+    private boolean summarizing = false;
+    private volatile String lastDebug = "";
+    private volatile int lastMemoriesUsed = 0;
 
     private final LlamaBridge llama = new LlamaBridge();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -285,6 +301,7 @@ public class MainActivity extends AppCompatActivity {
         });
         newChatTopBtn.setOnClickListener(v -> startNewChat());
         modelTitle.setOnClickListener(v -> goToPicker());
+        statusText.setOnClickListener(v -> showContextInfo());   // tap = "What the AI saw"
 
         // ---- drawer
         convAdapter = new ArrayAdapter<ConversationStore.Conv>(this,
@@ -461,10 +478,10 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         if (voiceDialog != null) voiceDialog.dismiss();
+        if (voice != null) voice.shutdown();       // the speech recognizer must be released on the main thread
         llama.stop();
         executor.execute(() -> {
             llama.close();
-            voice.shutdown();
             Embedder e = embedder;
             if (e != null) e.close();
             store.close();
@@ -502,6 +519,8 @@ public class MainActivity extends AppCompatActivity {
         voice.stopSpeaking();
         if (generating) llama.stop();
         currentConvId = -1;
+        convSummary = "";
+        convCovered = 0;
         messages.clear();
         chatAdapter.notifyDataSetChanged();
         chatTitle.setText("New chat");
@@ -517,6 +536,9 @@ public class MainActivity extends AppCompatActivity {
         currentConvId = c.id;
         messages.clear();
         messages.addAll(chatStore.loadMessages(c.id));
+        ConversationStore.Summary sm = chatStore.getSummary(c.id);
+        convSummary = sm == null ? "" : sm.text;
+        convCovered = sm == null ? 0 : Math.min(sm.covered, messages.size());
         chatAdapter.notifyDataSetChanged();
         if (!messages.isEmpty()) chatList.scrollToPosition(messages.size() - 1);
         chatTitle.setText(c.title);
@@ -599,6 +621,8 @@ public class MainActivity extends AppCompatActivity {
     private void resetCurrentChat() {
         voice.stopSpeaking();
         currentConvId = -1;
+        convSummary = "";
+        convCovered = 0;
         messages.clear();
         chatAdapter.notifyDataSetChanged();
         chatTitle.setText("New chat");
@@ -824,22 +848,8 @@ public class MainActivity extends AppCompatActivity {
         chatAdapter.notifyItemInserted(messages.size() - 1);
         chatStore.addMessage(convId, userMsg);
 
-        // "remember that ..." is handled directly, no LLM needed
-        Matcher m = REMEMBER.matcher(text);
-        if (m.matches()) {
-            String fact = m.group(1).trim();
-            Message ack = new Message(Message.AI, "Saving…");
-            messages.add(ack);
-            chatAdapter.notifyItemInserted(messages.size() - 1);
-            chatList.scrollToPosition(messages.size() - 1);
-            saveFactAsync(fact, r -> {
-                ack.text = r;
-                chatAdapter.notifyDataSetChanged();
-                chatStore.addMessage(convId, ack);
-                refreshConversationList();
-            });
-            return;
-        }
+        // "remember ..." and "forget ..." are handled directly, no LLM needed
+        if (handleMemoryCommand(text, convId)) return;
 
         Message reply = new Message(Message.AI, "");
         reply.streaming = true;
@@ -847,35 +857,49 @@ public class MainActivity extends AppCompatActivity {
         chatAdapter.notifyItemInserted(messages.size() - 1);
         chatList.scrollToPosition(messages.size() - 1);
 
-        final List<Message> window = historyWindow();
+        // snapshot for the background thread: everything except the empty reply placeholder
+        final List<Message> history = new ArrayList<>(messages.subList(0, messages.size() - 1));
+        final String summary = convSummary;
+        final int covered = convCovered;
         final boolean useMemory = useMemorySwitch.isChecked();
         final boolean learn = learnFactsSwitch.isChecked();
         final String sysPrompt = systemPrompt();
         final int maxNew = maxTokens();
         final float temp = temperature();
+        final ContextBuilder.Budget budget = new ContextBuilder.Budget();
+        budget.total = prefs.getInt("context_tokens", 1500);
         setGenerating(true);
         statusText.setText("Thinking…");
 
         executor.execute(() -> {
             long start = System.currentTimeMillis();
 
-            // 1) retrieve relevant memories
+            // 1) retrieve memories (short follow-ups are searched together with the previous question)
             Embedder emb = embedder;
-            float[] qVec = null;
-            String memBlock = "";
+            float[] vec = null;
+            List<MemoryStore.Hit> hits = new ArrayList<>();
             if (emb != null) {
                 try {
-                    qVec = emb.embed(text);
-                    if (useMemory) memBlock = buildMemoryBlock(text, qVec, window);
+                    vec = emb.embed(text);
+                    if (useMemory) {
+                        String q = ContextBuilder.retrievalQuery(text, history);
+                        float[] qv = q.equals(text) ? vec : emb.embed(q);
+                        hits = store.search(q, qv, TOP_K, MIN_SIM);
+                    }
                 } catch (Exception ex) {
                     Log.e(TAG, "retrieval failed", ex);
                 }
             }
 
-            // 2) generate the answer
-            String prompt = template.build(sysPrompt + memBlock, window);
+            // 2) build the prompt inside the token budget
+            ContextBuilder.Result ctx = ContextBuilder.build(template, sysPrompt, summary,
+                    hits, history, covered, budget);
+            lastDebug = ctx.debug;
+            lastMemoriesUsed = ctx.memoriesUsed;
+
+            // 3) generate the answer
             boolean[] first = {true};
-            int rc = llama.generate(prompt, maxNew, temp, bytes -> {
+            int rc = llama.generate(ctx.prompt, maxNew, temp, bytes -> {
                 String piece = new String(bytes, StandardCharsets.UTF_8);
                 boolean isFirst = first[0];
                 first[0] = false;
@@ -888,48 +912,11 @@ public class MainActivity extends AppCompatActivity {
             long ms = System.currentTimeMillis() - start;
             runOnUiThread(() -> finishGeneration(reply, convId, rc, ms));
 
-            // 3) save to memory (the reply is already on screen)
-            if (rc >= 0 && emb != null && qVec != null) rememberTurn(text, qVec, learn);
+            // 4) save to memory (the reply is already on screen)
+            if (rc >= 0 && emb != null && vec != null) rememberTurn(text, vec, learn);
         });
     }
 
-    /** Recent messages (without the empty reply placeholder), trimmed to the char budget. */
-    private List<Message> historyWindow() {
-        int end = messages.size() - 1;
-        List<Message> window = new ArrayList<>();
-        int chars = 0;
-        for (int i = end - 1; i >= 0; i--) {
-            Message m = messages.get(i);
-            if (m.error) continue;
-            if (!window.isEmpty() && chars + m.text.length() > HISTORY_CHAR_BUDGET) break;
-            chars += m.text.length();
-            window.add(0, m);
-        }
-        while (window.size() > 1 && window.get(0).role != Message.USER) window.remove(0);
-        return window;
-    }
-
-    private String buildMemoryBlock(String query, float[] qVec, List<Message> window) {
-        Set<String> inHistory = new HashSet<>();
-        for (Message m : window) inHistory.add(m.text);
-
-        StringBuilder sb = new StringBuilder();
-        int used = 0, count = 0;
-        for (MemoryStore.Hit h : store.search(query, qVec, TOP_K, MIN_SIM)) {
-            String c = h.row.content;
-            if (inHistory.contains(c)) continue;
-            String line = "- "
-                    + (MemoryStore.DOCUMENT.equals(h.row.type) ? "(" + h.row.source + ") " : "")
-                    + c + "\n";
-            if (count > 0 && used + line.length() > MEMORY_CHAR_BUDGET) break;
-            sb.append(line);
-            used += line.length();
-            count++;
-        }
-        if (count == 0) return "";
-        return "\n\nRelevant information from your memory and documents:\n" + sb
-                + "Use it when it helps answer the user.";
-    }
 
     private void rememberTurn(String userText, float[] vec, boolean learnFacts) {
         try {
@@ -937,6 +924,7 @@ public class MainActivity extends AppCompatActivity {
             if (!statement) return;
             if (store.maxSimilarity(vec) < 0.95f) {
                 store.add(MemoryStore.EPISODIC, "chat", userText, vec, 0.3f);
+                store.pruneEpisodic(MAX_EPISODIC);
             }
             if (learnFacts) extractFacts(userText);
         } catch (Exception e) {
@@ -998,6 +986,152 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> onResult.accept(r));
         });
     }
+    /** "remember ..." saves a fact. "forget ..." deletes the closest matching fact or chat memory. */
+    private boolean handleMemoryCommand(String text, long convId) {
+        Matcher rm = REMEMBER.matcher(text);
+        Matcher fm = FORGET.matcher(text);
+        final boolean remember = rm.matches();
+        final boolean forget = !remember && fm.matches();
+        if (!remember && !forget) return false;
+        final String arg = (remember ? rm.group(1) : fm.group(1)).trim();
+
+        Message ack = new Message(Message.AI, remember ? "Saving…" : "Looking…");
+        messages.add(ack);
+        chatAdapter.notifyItemInserted(messages.size() - 1);
+        chatList.scrollToPosition(messages.size() - 1);
+
+        Consumer<String> done = r -> {
+            ack.text = r;
+            chatAdapter.notifyDataSetChanged();
+            chatStore.addMessage(convId, ack);
+            refreshConversationList();
+        };
+        if (remember) saveFactAsync(arg, done);
+        else forgetAsync(arg, done);
+        return true;
+    }
+
+    private void forgetAsync(String what, Consumer<String> onResult) {
+        executor.execute(() -> {
+            String result;
+            Embedder e = embedder;
+            if (e == null) {
+                result = "Memory isn't set up yet. Open Settings → Open memory and set up the embedder files.";
+            } else {
+                try {
+                    float[] v = e.embed(what);
+                    MemoryStore.Hit best = null;
+                    for (MemoryStore.Hit h : store.search(what, v, 6, 0.45f)) {
+                        if (!MemoryStore.DOCUMENT.equals(h.row.type) && h.sim >= 0.45f) {
+                            best = h;
+                            break;
+                        }
+                    }
+                    if (best == null) {
+                        result = "I couldn't find a memory like that. You can also delete items "
+                                + "in Settings → Open memory.";
+                    } else {
+                        store.deleteById(best.row.id);
+                        result = "Okay, I forgot: " + best.row.content;
+                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "forget failed", ex);
+                    result = "Could not delete that memory.";
+                }
+            }
+            final String r = result;
+            runOnUiThread(() -> onResult.accept(r));
+        });
+    }
+
+    /** Folds the oldest part of a long chat into the rolling summary (runs in the background). */
+    private void maybeSummarize(long convId) {
+        if (convId != currentConvId || summarizing || !llama.isLoaded()) return;
+        int n = messages.size();
+        int covered = Math.min(convCovered, n);
+
+        int total = 0;
+        for (int i = covered; i < n; i++) {
+            if (!messages.get(i).error) total += messages.get(i).text.length();
+        }
+        if (total <= SUMMARY_TRIGGER_CHARS) return;
+
+        // keep the newest ~SUMMARY_KEEP_CHARS characters verbatim, fold everything older
+        int keep = 0, firstKept = n;
+        for (int i = n - 1; i >= covered; i--) {
+            Message m = messages.get(i);
+            int len = m.error ? 0 : m.text.length();
+            if (firstKept < n && keep + len > SUMMARY_KEEP_CHARS) break;
+            keep += len;
+            firstKept = i;
+        }
+        while (firstKept < n && messages.get(firstKept).role != Message.USER) firstKept++;
+        if (firstKept - covered < 2) return;
+
+        final List<Message> toFold = new ArrayList<>();
+        for (int i = covered; i < firstKept; i++) {
+            if (!messages.get(i).error) toFold.add(messages.get(i));
+        }
+        final String oldSummary = convSummary;
+        final int newCovered = firstKept;
+        summarizing = true;
+        if (!generating) statusText.setText("Summarizing earlier messages…");
+
+        executor.execute(() -> {
+            String s = null;
+            try {
+                s = summarize(oldSummary, toFold);
+            } catch (Exception ex) {
+                Log.e(TAG, "summarize failed", ex);
+            }
+            final String summaryText = s;
+            if (summaryText != null) chatStore.setSummary(convId, summaryText, newCovered);
+            runOnUiThread(() -> {
+                summarizing = false;
+                if (summaryText != null && convId == currentConvId) {
+                    convSummary = summaryText;
+                    convCovered = newCovered;
+                }
+                if (!generating) statusText.setText("Ready");
+            });
+        });
+    }
+
+    private String summarize(String oldSummary, List<Message> toFold) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Current summary:\n").append(oldSummary.isEmpty() ? "(none yet)" : oldSummary);
+        sb.append("\n\nNew messages:\n");
+        for (Message m : toFold) {
+            String t = m.text.length() > 600 ? m.text.substring(0, 600) + "…" : m.text;
+            sb.append(m.role == Message.USER ? "User: " : "Assistant: ").append(t).append("\n");
+        }
+        sb.append("\nUpdated summary:");
+
+        List<Message> one = new ArrayList<>();
+        one.add(new Message(Message.USER, sb.toString()));
+        String prompt = template.build(SUMMARY_PROMPT, one);
+
+        StringBuilder out = new StringBuilder();
+        int rc = llama.generate(prompt, 220, 0.2f,
+                bytes -> out.append(new String(bytes, StandardCharsets.UTF_8)));
+        String s = out.toString().trim();
+        if (rc < 0 || s.length() < 20) return null;
+        return s.length() > 900 ? s.substring(0, 900).trim() + "…" : s;
+    }
+
+    private void showContextInfo() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(lastDebug.isEmpty() ? "Nothing yet. Send a message first." : lastDebug);
+        if (!convSummary.isEmpty()) {
+            sb.append("\n\nConversation summary (covers the first ").append(convCovered)
+                    .append(" messages):\n").append(convSummary);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("What the AI saw")
+                .setMessage(sb.toString())
+                .setPositiveButton("OK", null)
+                .show();
+    }
 
     private void finishGeneration(Message reply, long convId, int rc, long ms) {
         reply.streaming = false;
@@ -1011,11 +1145,13 @@ public class MainActivity extends AppCompatActivity {
         } else {
             reply.text = reply.text.trim();
             if (reply.text.isEmpty()) reply.text = "(no response)";
-            statusText.setText(String.format(Locale.US, "%d tokens in %.1f s", rc, ms / 1000.0));
+            statusText.setText(String.format(Locale.US, "%d tokens in %.1f s · %d memories",
+                    rc, ms / 1000.0, lastMemoriesUsed));
         }
         chatStore.addMessage(convId, reply);       // saved to the conversation it belongs to
         refreshConversationList();
         notifyMessage(reply);
+        maybeSummarize(convId);
     }
 
     private static String errorText(int rc) {

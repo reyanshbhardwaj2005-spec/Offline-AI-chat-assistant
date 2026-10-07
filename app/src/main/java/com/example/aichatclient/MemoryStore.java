@@ -260,4 +260,29 @@ public class MemoryStore extends SQLiteOpenHelper {
         ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(f);
         return f;
     }
+
+    /** Keeps only the newest `keep` chat memories; facts and documents are never touched. */
+    public synchronized int pruneEpisodic(int keep) {
+        ensureLoaded();
+        List<Row> chat = new ArrayList<>();
+        for (Row r : cache) if (EPISODIC.equals(r.type)) chat.add(r);      // oldest first
+        int extra = chat.size() - keep;
+        if (extra <= 0) return 0;
+
+        final Set<Long> ids = new HashSet<>();
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (int i = 0; i < extra; i++) {
+                long id = chat.get(i).id;
+                ids.add(id);
+                db.delete("memory", "id=?", new String[]{String.valueOf(id)});
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+        cache.removeIf(r -> ids.contains(r.id));
+        return extra;
+    }
 }

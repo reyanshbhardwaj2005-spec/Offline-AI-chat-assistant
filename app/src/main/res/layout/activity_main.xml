@@ -5,7 +5,6 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- ================= MAIN CONTENT ================= -->
     <FrameLayout
         android:id="@+id/contentRoot"
         android:layout_width="match_parent"
@@ -20,34 +19,7 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="serif"
-                android:text="Choose a model"
-                android:textColor="#1F1E1D"
-                android:textSize="24sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Runs fully offline on this phone."
-                android:textColor="#73726C" />
-
-            <EditText
-                android:id="@+id/searchBox"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:hint="Search models"
-                android:imeOptions="actionSearch"
-                android:inputType="text"
-                android:maxLines="1"
-                android:textColor="#1F1E1D"
-                android:textColorHint="#9A9890" />
-
+            <!-- Hero header with logo -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -55,40 +27,210 @@
                 android:orientation="horizontal">
 
                 <TextView
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:background="@drawable/bg_logo_circle"
+                    android:gravity="center"
+                    android:text="✻"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="serif"
+                        android:text="Choose a model"
+                        android:textColor="#1F1E1D"
+                        android:textSize="24sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Runs fully offline on this phone."
+                        android:textColor="#73726C"
+                        android:textSize="13sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Private / offline badge card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_card_accent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_icon_tile"
+                    android:gravity="center"
+                    android:text="🔒"
+                    android:textSize="18sp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:text="Private by design — your chats never leave this device."
+                    android:textColor="#7A3E27"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- Search card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_search"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="14dp"
+                android:paddingEnd="8dp">
+
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Chat format:"
-                    android:textColor="#1F1E1D" />
+                    android:text="🔍"
+                    android:textSize="16sp" />
+
+                <EditText
+                    android:id="@+id/searchBox"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:background="@null"
+                    android:hint="Search models"
+                    android:imeOptions="actionSearch"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:textColor="#1F1E1D"
+                    android:textColorHint="#9A9890" />
+            </LinearLayout>
+
+            <!-- Chat format card with spinner -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_card"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_icon_tile"
+                    android:gravity="center"
+                    android:text="💬"
+                    android:textSize="20sp" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Chat format"
+                        android:textColor="#1F1E1D"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Template the model expects"
+                        android:textColor="#73726C"
+                        android:textSize="12sp" />
+                </LinearLayout>
 
                 <Spinner
                     android:id="@+id/templateSpinner"
-                    android:layout_width="0dp"
+                    android:layout_width="140dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:layout_weight="1" />
+                    android:layout_marginStart="8dp" />
             </LinearLayout>
 
-            <ListView
-                android:id="@+id/modelList"
+            <!-- Section label -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🧠"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="Available models"
+                    android:textColor="#1F1E1D"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Model list inside a card -->
+            <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_marginTop="8dp"
-                android:layout_weight="1" />
+                android:layout_weight="1"
+                android:background="@drawable/bg_card"
+                android:padding="6dp">
 
-            <TextView
-                android:id="@+id/emptyText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:padding="8dp"
-                android:textColor="#73726C"
-                android:textIsSelectable="true"
-                android:visibility="gone" />
+                <ListView
+                    android:id="@+id/modelList"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false" />
+
+                <TextView
+                    android:id="@+id/emptyText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:padding="16dp"
+                    android:textColor="#73726C"
+                    android:textIsSelectable="true"
+                    android:visibility="gone" />
+            </FrameLayout>
 
             <Button
                 android:id="@+id/importBtn"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Import model from storage (.gguf)" />
+                android:layout_height="52dp"
+                android:layout_marginTop="12dp"
+                app:backgroundTint="@null"
+                android:background="@drawable/bg_primary_button"
+                android:text="⬆  Import model from storage (.gguf)"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <!-- ===== Chat screen ===== -->
@@ -100,7 +242,6 @@
             android:orientation="vertical"
             android:visibility="gone">
 
-            <!-- Top bar -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -125,12 +266,19 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:gravity="center_horizontal"
-                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:orientation="horizontal"
                     android:paddingStart="4dp"
                     android:paddingEnd="4dp">
 
-                    <!-- Set from code once a chat has a title; empty on a fresh chat -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="6dp"
+                        android:text="✻"
+                        android:textColor="#D97757"
+                        android:textSize="18sp" />
+
                     <TextView
                         android:id="@+id/chatTitle"
                         android:layout_width="wrap_content"
@@ -151,8 +299,8 @@
                     android:minHeight="48dp"
                     android:padding="0dp"
                     android:text="+"
-                    android:textColor="#1F1E1D"
-                    android:textSize="26sp" />
+                    android:textColor="#D97757"
+                    android:textSize="28sp" />
             </LinearLayout>
 
             <TextView
@@ -164,7 +312,6 @@
                 android:textColor="#73726C"
                 android:textSize="12sp" />
 
-            <!-- Messages + empty-state greeting -->
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
@@ -177,7 +324,6 @@
                     android:clipToPadding="false"
                     android:paddingTop="8dp" />
 
-                <!-- Show when the chat has no messages, hide otherwise -->
                 <LinearLayout
                     android:id="@+id/emptyState"
                     android:layout_width="match_parent"
@@ -188,21 +334,31 @@
                     android:paddingEnd="24dp">
 
                     <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="96dp"
+                        android:layout_height="96dp"
+                        android:background="@drawable/bg_logo_circle"
+                        android:gravity="center"
                         android:text="✻"
-                        android:textColor="#D97757"
-                        android:textSize="56sp" />
+                        android:textColor="#FFFFFF"
+                        android:textSize="52sp" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
+                        android:layout_marginTop="20dp"
                         android:fontFamily="serif"
                         android:gravity="center"
                         android:text="What shall we think through?"
                         android:textColor="#1F1E1D"
                         android:textSize="26sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Private · Offline · On your device"
+                        android:textColor="#73726C"
+                        android:textSize="13sp" />
                 </LinearLayout>
             </FrameLayout>
 
@@ -237,22 +393,20 @@
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
-                    <!-- Optional: attach button (no code needed if unused) -->
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/attachBtn"
                         style="?android:attr/borderlessButtonStyle"
                         android:layout_width="40dp"
                         android:layout_height="40dp"
-                        app:backgroundTint="@null"
                         android:background="@drawable/bg_pill"
                         android:minWidth="40dp"
                         android:minHeight="40dp"
                         android:padding="0dp"
                         android:text="+"
                         android:textColor="#1F1E1D"
-                        android:textSize="22sp" />
+                        android:textSize="22sp"
+                        app:backgroundTint="@null" />
 
-                    <!-- Shows the current model name, set from code -->
                     <TextView
                         android:id="@+id/modelTitle"
                         android:layout_width="0dp"
@@ -260,6 +414,7 @@
                         android:layout_marginStart="8dp"
                         android:layout_weight="1"
                         android:background="@drawable/bg_pill"
+                        android:drawablePadding="6dp"
                         android:ellipsize="end"
                         android:gravity="center_vertical"
                         android:maxLines="1"
@@ -269,18 +424,17 @@
                         android:textSize="14sp" />
 
                     <com.google.android.material.button.MaterialButton
-                        app:backgroundTint="@null"
-                        android:background="@drawable/voice"
                         android:id="@+id/micBtn"
                         style="?android:attr/borderlessButtonStyle"
                         android:layout_width="44dp"
                         android:layout_height="44dp"
                         android:layout_marginStart="4dp"
+                        android:background="@drawable/voice"
                         android:minWidth="44dp"
                         android:minHeight="44dp"
                         android:padding="0dp"
-                        android:textSize="20sp" />
-                    <!--android:text="🎤"-->
+                        android:textSize="20sp"
+                        app:backgroundTint="@null" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/sendBtn"
@@ -288,14 +442,14 @@
                         android:layout_width="44dp"
                         android:layout_height="44dp"
                         android:layout_marginStart="4dp"
-                        app:backgroundTint="@null"
                         android:background="@drawable/bg_send_circle"
                         android:minWidth="44dp"
                         android:minHeight="44dp"
                         android:padding="0dp"
                         android:text="↑"
                         android:textColor="#FFFFFF"
-                        android:textSize="22sp" />
+                        android:textSize="22sp"
+                        app:backgroundTint="@null" />
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>
@@ -320,7 +474,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:fontFamily="serif"
-                    android:text="Memory"
+                    android:text="🧩  Memory"
                     android:textColor="#1F1E1D"
                     android:textSize="24sp"
                     android:textStyle="bold" />
@@ -330,7 +484,9 @@
                     style="?android:attr/borderlessButtonStyle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Back" />
+                    android:text="Back"
+                    android:textAllCaps="false"
+                    android:textColor="#D97757" />
             </LinearLayout>
 
             <TextView
@@ -340,61 +496,90 @@
                 android:layout_marginTop="4dp"
                 android:textColor="#73726C" />
 
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/useMemorySwitch"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Use memory in answers"
-                android:textColor="#1F1E1D" />
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
 
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/learnFactsSwitch"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Learn facts from chat (slower)"
-                android:textColor="#1F1E1D" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/useMemorySwitch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Use memory in answers"
+                    android:textColor="#1F1E1D" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/learnFactsSwitch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Learn facts from chat (slower)"
+                    android:textColor="#1F1E1D" />
+            </LinearLayout>
 
             <ListView
                 android:id="@+id/memoryListView"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_marginTop="8dp"
-                android:layout_weight="1" />
+                android:layout_marginTop="10dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_card" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
                 android:orientation="horizontal">
 
                 <Button
                     android:id="@+id/addNoteBtn"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
                     android:layout_weight="1"
-                    android:text="Add note" />
+                    app:backgroundTint="@null"
+                    android:background="@drawable/bg_primary_button"
+                    android:text="Add note"
+                    android:textAllCaps="false"
+                    android:textColor="#FFFFFF" />
 
                 <Button
                     android:id="@+id/importDocBtn"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
                     android:layout_weight="1"
-                    android:text="Import doc" />
+                    app:backgroundTint="@null"
+                    android:background="@drawable/bg_secondary_button"
+                    android:text="Import doc"
+                    android:textAllCaps="false"
+                    android:textColor="#1F1E1D" />
 
                 <Button
                     android:id="@+id/clearAllBtn"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Clear all" />
+                    app:backgroundTint="@null"
+                    android:background="@drawable/bg_secondary_button"
+                    android:text="Clear all"
+                    android:textAllCaps="false"
+                    android:textColor="#B3261E" />
             </LinearLayout>
 
             <Button
                 android:id="@+id/embedderBtn"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Set up embedder files" />
+                android:layout_marginTop="8dp"
+                app:backgroundTint="@null"
+                android:background="@drawable/bg_secondary_button"
+                android:text="Set up embedder files"
+                android:textAllCaps="false"
+                android:textColor="#1F1E1D" />
         </LinearLayout>
 
         <!-- ===== Settings screen ===== -->
@@ -419,7 +604,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:fontFamily="serif"
-                    android:text="Settings"
+                    android:text="⚙  Settings"
                     android:textColor="#1F1E1D"
                     android:textSize="24sp"
                     android:textStyle="bold" />
@@ -429,7 +614,9 @@
                     style="?android:attr/borderlessButtonStyle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Back" />
+                    android:text="Back"
+                    android:textAllCaps="false"
+                    android:textColor="#D97757" />
             </LinearLayout>
 
             <ScrollView
@@ -447,151 +634,222 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Profile"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginBottom="8dp"
+                        android:text="👤  PROFILE"
                         android:textColor="#73726C"
+                        android:textSize="12sp"
                         android:textStyle="bold" />
 
-                    <EditText
-                        android:id="@+id/settingsNameEdit"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="Your name"
-                        android:inputType="textPersonName|textCapWords"
-                        android:maxLines="1"
-                        android:textColor="#1F1E1D" />
+                        android:background="@drawable/bg_card"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+
+                        <EditText
+                            android:id="@+id/settingsNameEdit"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="Your name"
+                            android:inputType="textPersonName|textCapWords"
+                            android:maxLines="1"
+                            android:textColor="#1F1E1D" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="24dp"
-                        android:text="Assistant"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginBottom="8dp"
+                        android:text="✻  ASSISTANT"
                         android:textColor="#73726C"
+                        android:textSize="12sp"
                         android:textStyle="bold" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="System prompt"
-                        android:textColor="#1F1E1D" />
 
-                    <EditText
-                        android:id="@+id/systemPromptEdit"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:gravity="top"
-                        android:inputType="textCapSentences|textMultiLine"
-                        android:minLines="3"
-                        android:textColor="#1F1E1D" />
+                        android:background="@drawable/bg_card"
+                        android:orientation="vertical"
+                        android:padding="14dp">
 
-                    <Button
-                        android:id="@+id/resetPromptBtn"
-                        style="?android:attr/borderlessButtonStyle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Reset to default" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="0dp"
+                            android:text="System prompt"
+                            android:textColor="#1F1E1D" />
+
+                        <EditText
+                            android:id="@+id/systemPromptEdit"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="top"
+                            android:inputType="textCapSentences|textMultiLine"
+                            android:minLines="3"
+                            android:textColor="#1F1E1D" />
+
+                        <Button
+                            android:id="@+id/resetPromptBtn"
+                            style="?android:attr/borderlessButtonStyle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Reset to default"
+                            android:textAllCaps="false"
+                            android:textColor="#D97757" />
+
+
+                        <TextView
+                            android:id="@+id/maxTokensLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:textColor="#1F1E1D" />
+
+                        <SeekBar
+                            android:id="@+id/maxTokensSeek"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:max="15" />
+
+                        <TextView
+                            android:id="@+id/tempLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:textColor="#1F1E1D" />
+
+                        <SeekBar
+                            android:id="@+id/tempSeek"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:max="100" />
+                    </LinearLayout>
 
                     <TextView
-                        android:id="@+id/maxTokensLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:textColor="#1F1E1D" />
-
-                    <SeekBar
-                        android:id="@+id/maxTokensSeek"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:max="15" />
-
-                    <TextView
-                        android:id="@+id/tempLabel"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:textColor="#1F1E1D" />
-
-                    <SeekBar
-                        android:id="@+id/tempSeek"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:max="100" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="24dp"
-                        android:text="Models and memory"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginBottom="8dp"
+                        android:text="🧠  MODELS AND MEMORY"
                         android:textColor="#73726C"
+                        android:textSize="12sp"
                         android:textStyle="bold" />
 
-                    <Button
-                        android:id="@+id/settingsModelBtn"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Change model" />
+                        android:background="@drawable/bg_card"
+                        android:orientation="vertical"
+                        android:padding="14dp">
 
-                    <Button
-                        android:id="@+id/settingsMemoryBtn"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Open memory" />
+                        <Button
+                            android:id="@+id/settingsModelBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            app:backgroundTint="@null"
+                            android:background="@drawable/bg_primary_button"
+                            android:text="Change model"
+                            android:textAllCaps="false"
+                            android:textColor="#FFFFFF"/>
+
+                        <Button
+                            android:id="@+id/settingsMemoryBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            app:backgroundTint="@null"
+                            android:background="@drawable/bg_secondary_button"
+                            android:text="Open memory"
+                            android:textAllCaps="false"
+                            android:textColor="#1F1E1D" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="24dp"
-                        android:text="Voice"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginBottom="8dp"
+                        android:text="🎙  VOICE"
                         android:textColor="#73726C"
+                        android:textSize="12sp"
                         android:textStyle="bold" />
 
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_card"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="0dp"
+                            android:text="Voice language (speaking and listening)"
+                            android:textColor="#1F1E1D" />
+
+                        <Spinner
+                            android:id="@+id/voiceLangSpinner"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content" />
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/offlineOnlySwitch"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="Offline voice only (on-device recognizer)"
+                            android:textColor="#1F1E1D" />
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/autoSendSwitch"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Send voice messages automatically"
+                            android:textColor="#1F1E1D" />
+                    </LinearLayout>
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Voice language (speaking and listening)"
-                        android:textColor="#1F1E1D" />
-
-                    <Spinner
-                        android:id="@+id/voiceLangSpinner"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/offlineOnlySwitch"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Offline voice only (on-device recognizer)"
-                        android:textColor="#1F1E1D" />
-
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/autoSendSwitch"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="Send voice messages automatically"
-                        android:textColor="#1F1E1D" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="24dp"
-                        android:text="Data"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginBottom="8dp"
+                        android:text="🗂  DATA"
                         android:textColor="#73726C"
+                        android:textSize="12sp"
                         android:textStyle="bold" />
 
-                    <Button
-                        android:id="@+id/deleteAllChatsBtn"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Delete all conversations" />
+                        android:background="@drawable/bg_card"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+
+                        <Button
+                            android:id="@+id/deleteAllChatsBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            app:backgroundTint="@null"
+                            android:background="@drawable/bg_secondary_button"
+                            android:text="Delete all conversations"
+                            android:textAllCaps="false"
+                            android:textColor="#B3261E" />
+                    </LinearLayout>
 
                     <TextView
                         android:id="@+id/aboutText"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="24dp"
+                        android:gravity="center"
                         android:textColor="#73726C"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -610,9 +868,19 @@
             android:orientation="vertical"
             android:visibility="gone">
 
+            <TextView
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:background="@drawable/bg_logo_circle"
+                android:gravity="center"
+                android:text="✻"
+                android:textColor="#FFFFFF"
+                android:textSize="34sp" />
+
             <ProgressBar
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp" />
 
             <TextView
                 android:id="@+id/loadingText"
@@ -636,23 +904,45 @@
         android:focusable="true"
         android:orientation="vertical">
 
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:fontFamily="serif"
-            android:padding="16dp"
-            android:text="AI Chat"
-            android:textColor="#1F1E1D"
-            android:textSize="22sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_logo_circle"
+                android:gravity="center"
+                android:text="✻"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:fontFamily="serif"
+                android:text="AI Chat"
+                android:textColor="#1F1E1D"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <Button
             android:id="@+id/drawerNewChatBtn"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:layout_marginStart="12dp"
             android:layout_marginEnd="12dp"
-            android:text="+  New chat" />
+            app:backgroundTint="@null"
+            android:background="@drawable/bg_primary_button"
+            android:text="+  New chat"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"

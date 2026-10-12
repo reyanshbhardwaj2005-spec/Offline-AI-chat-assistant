@@ -58,6 +58,9 @@ import java.util.regex.Pattern;
 
 import android.Manifest;
 import android.widget.AdapterView;
+import android.graphics.Color;
+import androidx.core.content.FileProvider;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -180,7 +183,11 @@ public class MainActivity extends AppCompatActivity {
             registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
                 if (uri != null) attachImage(uri);
             });
-
+    private Uri cameraUri;
+    private final ActivityResultLauncher<Uri> cameraLauncher =
+            registerForActivityResult(new ActivityResultContracts.TakePicture(), success -> {
+                if (success && cameraUri != null) attachImage(cameraUri);
+            });
 
 
     // ================================================================ settings values
@@ -472,7 +479,7 @@ public class MainActivity extends AppCompatActivity {
         attachThumb.setClipToOutline(true);          // rounds the thumbnail using bg_thumb corners
         attachRemoveBtn = findViewById(R.id.attachRemoveBtn);
         attachBtn.setOnClickListener(v -> {
-            if (visionReady) imageLauncher.launch("image/*");
+            if (visionReady) showAttachSheet();
             else Toast.makeText(this, "Load a picture model (for example SmolVLM2 or Qwen-VL) "
                     + "to attach pictures.", Toast.LENGTH_LONG).show();
         });
@@ -1680,5 +1687,40 @@ public class MainActivity extends AppCompatActivity {
     private void setInputText(String t) {
         input.setText(t);
         input.setSelection(input.getText().length());
+    }
+    /** "Add to chat" bottom sheet with Camera and Photos. */
+    private void showAttachSheet() {
+        hideKeyboard();
+        BottomSheetDialog dialog = new BottomSheetDialog(this);
+        View sheet = getLayoutInflater().inflate(R.layout.bottom_sheet_attach, null);
+        dialog.setContentView(sheet);
+        // let the rounded corners of bg_sheet show through
+        View parent = (View) sheet.getParent();
+        if (parent != null) parent.setBackgroundColor(Color.TRANSPARENT);
+
+        sheet.findViewById(R.id.sheetClose).setOnClickListener(v -> dialog.dismiss());
+        sheet.findViewById(R.id.sheetPhotos).setOnClickListener(v -> {
+            dialog.dismiss();
+            imageLauncher.launch("image/*");
+        });
+        sheet.findViewById(R.id.sheetCamera).setOnClickListener(v -> {
+            dialog.dismiss();
+            openCamera();
+        });
+        dialog.show();
+    }
+
+    private void openCamera() {
+        try {
+            File dir = new File(getCacheDir(), "camera");
+            if (!dir.exists()) //noinspection ResultOfMethodCallIgnored
+                dir.mkdirs();
+            File photo = File.createTempFile("photo_", ".jpg", dir);
+            cameraUri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", photo);
+            cameraLauncher.launch(cameraUri);
+        } catch (IOException ex) {
+            Log.e(TAG, "camera failed", ex);
+            Toast.makeText(this, "Could not open the camera", Toast.LENGTH_LONG).show();
+        }
     }
 }

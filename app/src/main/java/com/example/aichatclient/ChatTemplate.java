@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Locale;
 
 public enum ChatTemplate {
-    CHATML("ChatML"), LLAMA3("Llama 3"), GEMMA("Gemma"), PHI3("Phi-3");
+    CHATML("ChatML"), LLAMA3("Llama 3"), GEMMA("Gemma"), PHI3("Phi-3"), SMOLVLM("SmolVLM");
 
     public final String label;
 
@@ -14,10 +14,11 @@ public enum ChatTemplate {
 
     public static ChatTemplate detect(String fileName) {
         String n = fileName.toLowerCase(Locale.ROOT);
+        if (n.contains("smolvlm")) return SMOLVLM;
         if (n.contains("gemma")) return GEMMA;
         if (n.contains("llama-3") || n.contains("llama3") || n.contains("llama_3")) return LLAMA3;
         if (n.contains("phi-3") || n.contains("phi3") || n.contains("phi_3")) return PHI3;
-        return CHATML;   // Qwen and most others
+        return CHATML;   // Qwen (also Qwen-VL) and most others
     }
 
     /** msgs must start with a user message and end with the latest user message. */
@@ -27,12 +28,12 @@ public enum ChatTemplate {
         switch (this) {
             case LLAMA3: {
                 sb.append("<|start_header_id|>system<|end_header_id|>\n\n")
-                        .append(system).append("<|eot_id|>");
+                  .append(system).append("<|eot_id|>");
                 for (Message m : msgs) {
                     sb.append("<|start_header_id|>")
-                            .append(m.role == Message.USER ? "user" : "assistant")
-                            .append("<|end_header_id|>\n\n")
-                            .append(m.text).append("<|eot_id|>");
+                      .append(m.role == Message.USER ? "user" : "assistant")
+                      .append("<|end_header_id|>\n\n")
+                      .append(m.text).append("<|eot_id|>");
                 }
                 sb.append("<|start_header_id|>assistant<|end_header_id|>\n\n");
                 break;
@@ -53,17 +54,26 @@ public enum ChatTemplate {
                 sb.append("<|system|>\n").append(system).append("<|end|>\n");
                 for (Message m : msgs) {
                     sb.append(m.role == Message.USER ? "<|user|>\n" : "<|assistant|>\n")
-                            .append(m.text).append("<|end|>\n");
+                      .append(m.text).append("<|end|>\n");
                 }
                 sb.append("<|assistant|>\n");
+                break;
+            }
+            case SMOLVLM: {
+                sb.append("<|im_start|>").append(system).append("\n\n");
+                for (Message m : msgs) {
+                    sb.append(m.role == Message.USER ? "User: " : "Assistant: ")
+                      .append(m.text).append("<end_of_utterance>\n");
+                }
+                sb.append("Assistant:");
                 break;
             }
             default: {   // CHATML
                 sb.append("<|im_start|>system\n").append(system).append("<|im_end|>\n");
                 for (Message m : msgs) {
                     sb.append("<|im_start|>")
-                            .append(m.role == Message.USER ? "user" : "assistant")
-                            .append("\n").append(m.text).append("<|im_end|>\n");
+                      .append(m.role == Message.USER ? "user" : "assistant")
+                      .append("\n").append(m.text).append("<|im_end|>\n");
                 }
                 sb.append("<|im_start|>assistant\n");
             }

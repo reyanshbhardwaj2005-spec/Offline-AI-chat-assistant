@@ -1,6 +1,13 @@
 package com.example.aichatclient;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.ImageSpan;
+import android.util.LruCache;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -22,6 +29,7 @@ public class ChatAdapter extends RecyclerView.Adapter<ChatAdapter.VH> {
     private final List<Message> items;
     private final SpeakListener listener;
     private Message speaking = null;
+    private final LruCache<String, BitmapDrawable> thumbs = new LruCache<>(24);
 
     public ChatAdapter(List<Message> items, SpeakListener listener) {
         this.items = items;
@@ -70,7 +78,10 @@ public class ChatAdapter extends RecyclerView.Adapter<ChatAdapter.VH> {
         bg.setColor(bgColor);
         h.bubble.setBackground(bg);
         h.bubble.setTextColor(fgColor);
-        h.bubble.setText(m.text.isEmpty() ? "…" : m.text);
+
+        CharSequence content = m.text.isEmpty() ? "…" : m.text;
+        if (m.imagePath != null) content = withImage(h.bubble, m.imagePath, content);
+        h.bubble.setText(content);
 
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) h.container.getLayoutParams();
         lp.gravity = user ? Gravity.END : Gravity.START;
@@ -83,6 +94,37 @@ public class ChatAdapter extends RecyclerView.Adapter<ChatAdapter.VH> {
         h.speak.setText(isSpeaking ? "⏹  Stop" : "🔊");
         h.speak.setContentDescription(isSpeaking ? "Stop reading" : "Read aloud");
         h.speak.setOnClickListener(v -> listener.onSpeak(m));
+    }
+
+    /** Puts the attached picture on top of the message text, inside the same bubble. */
+    private CharSequence withImage(View v, String path, CharSequence text) {
+        float density = v.getResources().getDisplayMetrics().density;
+        int targetW = (int) (220 * density);
+
+        BitmapDrawable d = thumbs.get(path);
+        if (d == null) {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(path, bounds);
+            if (bounds.outWidth <= 0) return text;               // file missing: show text only
+            int sample = 1;
+            while (bounds.outWidth / (sample * 2) >= targetW) sample *= 2;
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inSampleSize = sample;
+            Bitmap bmp = BitmapFactory.decodeFile(path, o);
+            if (bmp == null) return text;
+            d = new BitmapDrawable(v.getResources(), bmp);
+            thumbs.put(path, d);
+        }
+        Bitmap b = d.getBitmap();
+        int w = targetW;
+        int h = Math.min((int) (260 * density), (int) (w * (b.getHeight() / (float) b.getWidth())));
+        d.setBounds(0, 0, w, h);
+
+        SpannableStringBuilder sb = new SpannableStringBuilder(" ");
+        sb.setSpan(new ImageSpan(d, ImageSpan.ALIGN_BOTTOM), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        if (text.length() > 0) sb.append("\n").append(text);
+        return sb;
     }
 
     @Override

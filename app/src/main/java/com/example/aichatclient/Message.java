@@ -8,6 +8,7 @@ public class Message {
     public String text;
     public boolean error = false;
     public boolean streaming = false;
+    public String imagePath = null;     // picture attached to this message (small JPEG in app storage)
 
     public Message(int role, String text) {
         this.role = role;

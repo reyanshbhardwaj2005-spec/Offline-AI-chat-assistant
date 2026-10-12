@@ -15,6 +15,7 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.SeekBar;
 import android.widget.Spinner;
@@ -162,6 +163,22 @@ public class MainActivity extends AppCompatActivity {
     private final ActivityResultLauncher<String> micPermissionLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
                 if (voice != null) voice.onPermissionResult(granted, input.getText().toString());
+            });
+
+    // ---- vision (picture input)
+    private static final int IMAGE_MAX_SIDE = 512;                  // pictures are shrunk to this size
+    private static final String DEFAULT_IMAGE_PROMPT = "Describe this image in detail.";
+    private static final String NO_PROJECTOR = "none";
+    private Button attachBtn;
+    private View attachRemoveBtn;      // now a TextView badge in the XML, not a Button
+    private View attachPreview;
+    private ImageView attachThumb;
+    private ImageUtil.Prepared activeImage = null;     // picture that goes with the next questions
+    private boolean activeImageIsNew = false;          // true until it has been shown in the chat
+    private boolean visionReady = false;
+    private final ActivityResultLauncher<String> imageLauncher =
+            registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
+                if (uri != null) attachImage(uri);
             });
 
 
@@ -448,6 +465,20 @@ public class MainActivity extends AppCompatActivity {
         autoSendSwitch.setOnCheckedChangeListener((b, on) ->
                 prefs.edit().putBoolean("voice_auto_send", on).apply());
 
+        // ---- vision (picture input)
+        attachBtn = findViewById(R.id.attachBtn);
+        attachPreview = findViewById(R.id.attachPreview);
+        attachThumb = findViewById(R.id.attachThumb);
+        attachThumb.setClipToOutline(true);          // rounds the thumbnail using bg_thumb corners
+        attachRemoveBtn = findViewById(R.id.attachRemoveBtn);
+        attachBtn.setOnClickListener(v -> {
+            if (visionReady) imageLauncher.launch("image/*");
+            else Toast.makeText(this, "Load a picture model (for example SmolVLM2 or Qwen-VL) "
+                    + "to attach pictures.", Toast.LENGTH_LONG).show();
+        });
+        attachRemoveBtn.setOnClickListener(v -> clearActiveImage());
+        updateAttachUi();
+
         // ---- back button
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -521,6 +552,7 @@ public class MainActivity extends AppCompatActivity {
         currentConvId = -1;
         convSummary = "";
         convCovered = 0;
+        clearActiveImage();
         messages.clear();
         chatAdapter.notifyDataSetChanged();
         chatTitle.setText("New chat");
@@ -539,6 +571,7 @@ public class MainActivity extends AppCompatActivity {
         ConversationStore.Summary sm = chatStore.getSummary(c.id);
         convSummary = sm == null ? "" : sm.text;
         convCovered = sm == null ? 0 : Math.min(sm.covered, messages.size());
+        restoreActiveImageFromChat();
         chatAdapter.notifyDataSetChanged();
         if (!messages.isEmpty()) chatList.scrollToPosition(messages.size() - 1);
         chatTitle.setText(c.title);
@@ -623,6 +656,7 @@ public class MainActivity extends AppCompatActivity {
         currentConvId = -1;
         convSummary = "";
         convCovered = 0;
+        clearActiveImage();
         messages.clear();
         chatAdapter.notifyDataSetChanged();
         chatTitle.setText("New chat");
@@ -678,6 +712,7 @@ public class MainActivity extends AppCompatActivity {
                     (dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(".gguf"));
             if (files == null) continue;
             for (File f : files) {
+                if (isProjector(f.getName())) continue;          // mmproj files are not chat models
                 if (seen.add(f.getAbsolutePath())) allModels.add(new ModelItem(f));
             }
         }
@@ -808,19 +843,69 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadModel(ModelItem item) {
+        final List<File> projectors = listProjectors();
+        final String modelName = item.file.getName();
+        String saved = prefs.getString("proj:" + modelName, null);
+
+        if (saved != null) {                                   // choice made earlier
+            startLoad(item, NO_PROJECTOR.equals(saved) ? null : findByName(projectors, saved));
+            return;
+        }
+        File auto = autoMatchProjector(modelName, projectors);
+        if (auto != null) {
+            prefs.edit().putString("proj:" + modelName, auto.getName()).apply();
+            startLoad(item, auto);
+            return;
+        }
+        if (projectors.isEmpty()) {                            // plain text model
+            startLoad(item, null);
+            return;
+        }
+        // there are vision projector files, but none clearly belongs to this model: ask once
+        String[] names = new String[projectors.size() + 1];
+        for (int i = 0; i < projectors.size(); i++) names[i] = projectors.get(i).getName();
+        names[names.length - 1] = "Text only (no pictures)";
+        new AlertDialog.Builder(this)
+                .setTitle("Which picture reader belongs to this model?")
+                .setItems(names, (d, which) -> {
+                    File chosen = which < projectors.size() ? projectors.get(which) : null;
+                    prefs.edit().putString("proj:" + modelName,
+                            chosen == null ? NO_PROJECTOR : chosen.getName()).apply();
+                    startLoad(item, chosen);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void startLoad(ModelItem item, File projector) {
         template = pickTemplate(item.file.getName());
         showLoading("Loading " + item.file.getName() + "…");
         executor.execute(() -> {
             llama.close();
             long t0 = System.currentTimeMillis();
             boolean ok = llama.load(item.file.getAbsolutePath(), N_CTX, N_THREADS);
+            boolean vision = false;
+            if (ok && projector != null) {
+                runOnUiThread(() -> loadingText.setText("Loading the picture reader…"));
+                vision = llama.loadVision(projector.getAbsolutePath(), N_THREADS);
+            }
             long secs = (System.currentTimeMillis() - t0) / 1000;
+            final boolean visionOk = vision;
             runOnUiThread(() -> {
                 hideLoading();
+                visionReady = ok && visionOk;
+                if (!visionReady) clearActiveImage();
+                updateAttachUi();
                 if (ok) {
                     loadedModelName = item.file.getName();
-                    modelTitle.setText(loadedModelName);
-                    statusText.setText("Ready · loaded in " + secs + " s · format: " + template.label);
+                    modelTitle.setText(visionOk ? loadedModelName + "  · 👁 vision" : loadedModelName);
+                    statusText.setText("Ready · loaded in " + secs + " s · format: " + template.label
+                            + (visionOk ? " · can see pictures" : ""));
+                    if (projector != null && !visionOk) {
+                        prefs.edit().remove("proj:" + item.file.getName()).apply();   // ask again next time
+                        Toast.makeText(this, "The picture reader could not be loaded, so this "
+                                + "model works as text only.", Toast.LENGTH_LONG).show();
+                    }
                     showChat();
                 } else {
                     loadedModelName = null;
@@ -832,11 +917,147 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    // ================================================================ vision: projector files
+
+    private static boolean isProjector(String fileName) {
+        String n = fileName.toLowerCase(Locale.ROOT);
+        return n.startsWith("mmproj") && n.endsWith(".gguf");
+    }
+
+    private List<File> listProjectors() {
+        List<File> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        File[] dirs = {getExternalFilesDir("models"), getExternalFilesDir(null)};
+        for (File d : dirs) {
+            if (d == null) continue;
+            File[] files = d.listFiles((dir, name) -> isProjector(name));
+            if (files == null) continue;
+            for (File f : files) if (seen.add(f.getAbsolutePath())) out.add(f);
+        }
+        Collections.sort(out, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+        return out;
+    }
+
+    private static File findByName(List<File> files, String name) {
+        for (File f : files) if (f.getName().equals(name)) return f;
+        return null;
+    }
+
+    /** A projector belongs to a model when it contains every word of the model's file name. */
+    private static File autoMatchProjector(String modelName, List<File> projectors) {
+        Set<String> modelWords = nameWords(modelName);
+        if (modelWords.isEmpty()) return null;
+        for (File p : projectors) {
+            if (nameWords(p.getName()).containsAll(modelWords)) return p;
+        }
+        return null;
+    }
+
+    private static Set<String> nameWords(String fileName) {
+        String s = fileName.toLowerCase(Locale.ROOT).replaceAll("\\.gguf$", "");
+        Set<String> words = new HashSet<>();
+        for (String w : s.split("[^a-z0-9.]+")) {
+            if (w.length() < 2 || w.equals("mmproj") || w.equals("model")) continue;
+            if (w.matches("q\\d.*|iq\\d.*|f16|f32|bf16|fp16")) continue;      // quantization names
+            words.add(w);
+        }
+        return words;
+    }
+
+    // ================================================================ vision: attached picture
+
+    private void attachImage(Uri uri) {
+        if (!visionReady) {
+            Toast.makeText(this, "Load a vision model first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        showLoading("Preparing the picture…");
+        new Thread(() -> {
+            ImageUtil.Prepared p = null;
+            String error = null;
+            try {
+                p = ImageUtil.prepare(this, uri, IMAGE_MAX_SIDE, true);
+            } catch (Exception ex) {
+                Log.e(TAG, "attach failed", ex);
+                error = ex.getMessage();
+            }
+            final ImageUtil.Prepared prepared = p;
+            final String err = error;
+            runOnUiThread(() -> {
+                hideLoading();
+                if (prepared == null) {
+                    Toast.makeText(this, "Could not read that picture"
+                            + (err == null ? "" : ": " + err), Toast.LENGTH_LONG).show();
+                    return;
+                }
+                clearActiveImage();
+                activeImage = prepared;
+                activeImageIsNew = true;
+                updateAttachUi();
+                input.requestFocus();
+            });
+        }).start();
+    }
+
+    private void clearActiveImage() {
+        if (activeImage != null && activeImageIsNew && activeImage.path != null) {
+            //noinspection ResultOfMethodCallIgnored
+            new File(activeImage.path).delete();          // never sent, so nobody needs the file
+        }
+        activeImage = null;
+        activeImageIsNew = false;
+        if (attachPreview != null) updateAttachUi();
+    }
+
+    /**
+     * The preview above the text box is shown only for a picture that has been picked
+     * but not sent yet (like Claude). After sending, the picture lives in the chat bubble
+     * and is still used for follow-up questions.
+     */
+    private void updateAttachUi() {
+        boolean has = activeImage != null && visionReady && activeImageIsNew;
+        attachPreview.setVisibility(has ? View.VISIBLE : View.GONE);
+        if (has && activeImage.path != null) {
+            attachThumb.setImageURI(Uri.fromFile(new File(activeImage.path)));
+        } else {
+            attachThumb.setImageDrawable(null);
+        }
+    }
+
+    /** After reopening a chat, the last picture of that chat is attached again for follow-ups. */
+    private void restoreActiveImageFromChat() {
+        clearActiveImage();
+        if (!visionReady) return;
+        String found = null;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i).imagePath != null) { found = messages.get(i).imagePath; break; }
+        }
+        if (found == null) return;
+        final String path = found;
+        final long convAtStart = currentConvId;
+        new Thread(() -> {
+            try {
+                ImageUtil.Prepared p = ImageUtil.fromFile(this, path, IMAGE_MAX_SIDE);
+                runOnUiThread(() -> {
+                    if (convAtStart != currentConvId || !visionReady) return;
+                    activeImage = p;
+                    activeImageIsNew = false;
+                    updateAttachUi();
+                });
+            } catch (Exception ex) {
+                Log.e(TAG, "restore picture failed", ex);
+            }
+        }).start();
+    }
+
     // ================================================================ chatting
 
     private void sendMessage() {
-        String text = input.getText().toString().trim();
-        if (text.isEmpty() || generating || !llama.isLoaded()) return;
+        String typed = input.getText().toString().trim();
+        final boolean withImage = activeImage != null && llama.hasVision();
+        if ((typed.isEmpty() && !withImage) || generating || !llama.isLoaded()) return;
+        final boolean defaultPrompt = typed.isEmpty();       // picture sent without a question
+        final String text = defaultPrompt ? DEFAULT_IMAGE_PROMPT : typed;
         voice.stopSpeaking();
         input.setText("");
 
@@ -844,6 +1065,11 @@ public class MainActivity extends AppCompatActivity {
         final long convId = currentConvId;
 
         Message userMsg = new Message(Message.USER, text);
+        if (withImage && activeImageIsNew) {                 // show the picture once, with the first question
+            userMsg.imagePath = activeImage.path;
+            activeImageIsNew = false;
+            updateAttachUi();                                // hides the preview above the text box
+        }
         messages.add(userMsg);
         chatAdapter.notifyItemInserted(messages.size() - 1);
         chatStore.addMessage(convId, userMsg);
@@ -859,6 +1085,11 @@ public class MainActivity extends AppCompatActivity {
 
         // snapshot for the background thread: everything except the empty reply placeholder
         final List<Message> history = new ArrayList<>(messages.subList(0, messages.size() - 1));
+        final ImageUtil.Prepared image = withImage ? activeImage : null;
+        if (image != null) {                                 // the picture goes into the latest question
+            history.set(history.size() - 1,
+                    new Message(Message.USER, llama.visionMarker() + "\n" + text));
+        }
         final String summary = convSummary;
         final int covered = convCovered;
         final boolean useMemory = useMemorySwitch.isChecked();
@@ -869,7 +1100,7 @@ public class MainActivity extends AppCompatActivity {
         final ContextBuilder.Budget budget = new ContextBuilder.Budget();
         budget.total = prefs.getInt("context_tokens", 1500);
         setGenerating(true);
-        statusText.setText("Thinking…");
+        statusText.setText(image != null ? "Looking at the picture…" : "Thinking…");
 
         executor.execute(() -> {
             long start = System.currentTimeMillis();
@@ -899,7 +1130,7 @@ public class MainActivity extends AppCompatActivity {
 
             // 3) generate the answer
             boolean[] first = {true};
-            int rc = llama.generate(ctx.prompt, maxNew, temp, bytes -> {
+            LlamaBridge.TokenCallback onToken = bytes -> {
                 String piece = new String(bytes, StandardCharsets.UTF_8);
                 boolean isFirst = first[0];
                 first[0] = false;
@@ -908,12 +1139,16 @@ public class MainActivity extends AppCompatActivity {
                     reply.text += piece;
                     notifyMessage(reply);
                 });
-            });
+            };
+            int rc = image != null
+                    ? llama.generateWithImage(ctx.prompt, image.rgb, image.width, image.height,
+                            maxNew, temp, onToken)
+                    : llama.generate(ctx.prompt, maxNew, temp, onToken);
             long ms = System.currentTimeMillis() - start;
             runOnUiThread(() -> finishGeneration(reply, convId, rc, ms));
 
             // 4) save to memory (the reply is already on screen)
-            if (rc >= 0 && emb != null && vec != null) rememberTurn(text, vec, learn);
+            if (rc >= 0 && emb != null && vec != null && !defaultPrompt) rememberTurn(text, vec, learn);
         });
     }
 
@@ -1159,6 +1394,9 @@ public class MainActivity extends AppCompatActivity {
             case -1: return "The model is not loaded.";
             case -2: return "The conversation is too long for the model. Tap + to start a new chat.";
             case -3: return "Could not read the prompt.";
+            case -5: return "The picture and the question didn't match up. Try again.";
+            case -6: return "Could not process that picture. Try a different one.";
+            case -7: return "The picture reader failed. Try again with a smaller picture.";
             default: return "Generation failed.";
         }
     }

@@ -6,6 +6,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,7 +38,7 @@ public class ConversationStore extends SQLiteOpenHelper {
     }
 
     public ConversationStore(Context ctx) {
-        super(ctx, "chats.db", null, 2);
+        super(ctx, "chats.db", null, 3);
     }
 
     @Override
@@ -53,7 +54,8 @@ public class ConversationStore extends SQLiteOpenHelper {
                 + "role INTEGER NOT NULL,"
                 + "text TEXT NOT NULL,"
                 + "error INTEGER NOT NULL DEFAULT 0,"
-                + "created_at INTEGER NOT NULL)");
+                + "created_at INTEGER NOT NULL,"
+                + "image_path TEXT)");
         db.execSQL("CREATE INDEX idx_messages_conv ON messages(conv_id, id)");
         createSummaries(db);
     }
@@ -61,6 +63,7 @@ public class ConversationStore extends SQLiteOpenHelper {
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldV, int newV) {
         if (oldV < 2) createSummaries(db);
+        if (oldV < 3) db.execSQL("ALTER TABLE messages ADD COLUMN image_path TEXT");
     }
 
     private static void createSummaries(SQLiteDatabase db) {
@@ -92,6 +95,7 @@ public class ConversationStore extends SQLiteOpenHelper {
             cv.put("text", m.text);
             cv.put("error", m.error ? 1 : 0);
             cv.put("created_at", now);
+            cv.put("image_path", m.imagePath);
             db.insert("messages", null, cv);
 
             ContentValues up = new ContentValues();
@@ -106,11 +110,12 @@ public class ConversationStore extends SQLiteOpenHelper {
     public synchronized List<Message> loadMessages(long convId) {
         List<Message> out = new ArrayList<>();
         try (Cursor c = getReadableDatabase().rawQuery(
-                "SELECT role, text, error FROM messages WHERE conv_id=? ORDER BY id",
+                "SELECT role, text, error, image_path FROM messages WHERE conv_id=? ORDER BY id",
                 new String[]{String.valueOf(convId)})) {
             while (c.moveToNext()) {
                 Message m = new Message(c.getInt(0), c.getString(1));
                 m.error = c.getInt(2) == 1;
+                m.imagePath = c.isNull(3) ? null : c.getString(3);
                 out.add(m);
             }
         }
@@ -138,6 +143,7 @@ public class ConversationStore extends SQLiteOpenHelper {
         db.beginTransaction();
         try {
             String[] arg = {String.valueOf(id)};
+            deleteImageFiles(db, "conv_id=?", arg);
             db.delete("messages", "conv_id=?", arg);
             db.delete("summaries", "conv_id=?", arg);
             db.delete("conversations", "id=?", arg);
@@ -151,12 +157,26 @@ public class ConversationStore extends SQLiteOpenHelper {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try {
+            deleteImageFiles(db, null, null);
             db.delete("messages", null, null);
             db.delete("summaries", null, null);
             db.delete("conversations", null, null);
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();
+        }
+    }
+
+    /** Removes the picture files that belong to the messages about to be deleted. */
+    private static void deleteImageFiles(SQLiteDatabase db, String where, String[] args) {
+        String sql = "SELECT image_path FROM messages WHERE image_path IS NOT NULL"
+                + (where == null ? "" : " AND " + where);
+        try (Cursor c = db.rawQuery(sql, args)) {
+            while (c.moveToNext()) {
+                String p = c.getString(0);
+                if (p != null) //noinspection ResultOfMethodCallIgnored
+                    new File(p).delete();
+            }
         }
     }
 

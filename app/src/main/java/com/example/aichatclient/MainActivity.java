@@ -183,6 +183,21 @@ public class MainActivity extends AppCompatActivity {
             registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
                 if (uri != null) attachImage(uri);
             });
+    // ---- chat with a PDF (the + button)
+    private static final String PREF_PDF = "conv_pdf_";
+    private static final int PDF_TOP_K = 4;
+    private static final float PDF_MIN_SIM = 0.15f;
+    private static final String PDF_HINT = " The user attached the PDF \"%s\". Answer using the "
+            + "excerpts from it given below and mention the page like (page 3). If the excerpts "
+            + "do not contain the answer, say you could not find it in the PDF.";
+    private View pdfChip, pdfChipRemove;
+    private TextView pdfChipName;
+    private volatile String activePdf = null;        // PDF attached to the open chat
+    private final ActivityResultLauncher<String[]> pdfLauncher =
+            registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+                if (uri != null) attachPdf(uri);
+            });
+
     private Uri cameraUri;
     private final ActivityResultLauncher<Uri> cameraLauncher =
             registerForActivityResult(new ActivityResultContracts.TakePicture(), success -> {
@@ -479,12 +494,22 @@ public class MainActivity extends AppCompatActivity {
         attachThumb.setClipToOutline(true);          // rounds the thumbnail using bg_thumb corners
         attachRemoveBtn = findViewById(R.id.attachRemoveBtn);
         attachBtn.setOnClickListener(v -> {
-            if (visionReady) showAttachSheet();
-            else Toast.makeText(this, "Load a picture model (for example SmolVLM2 or Qwen-VL) "
-                    + "to attach pictures.", Toast.LENGTH_LONG).show();
+            if (!llama.isLoaded()) {
+                Toast.makeText(this, "Load a model first", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (visionReady) showAttachSheet();                              // picture model: pictures only
+            else pdfLauncher.launch(new String[]{"application/pdf"});        // text model: PDF only
         });
         attachRemoveBtn.setOnClickListener(v -> clearActiveImage());
         updateAttachUi();
+
+        // ---- attached PDF chip
+        pdfChip = findViewById(R.id.pdfChip);
+        pdfChipName = findViewById(R.id.pdfChipName);
+        pdfChipRemove = findViewById(R.id.pdfChipRemove);
+        pdfChipRemove.setOnClickListener(v -> detachPdf());
+        updatePdfUi();
 
         // ---- back button
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
@@ -560,6 +585,8 @@ public class MainActivity extends AppCompatActivity {
         convSummary = "";
         convCovered = 0;
         clearActiveImage();
+        activePdf = null;
+        updatePdfUi();
         messages.clear();
         chatAdapter.notifyDataSetChanged();
         chatTitle.setText("New chat");
@@ -579,6 +606,8 @@ public class MainActivity extends AppCompatActivity {
         convSummary = sm == null ? "" : sm.text;
         convCovered = sm == null ? 0 : Math.min(sm.covered, messages.size());
         restoreActiveImageFromChat();
+        activePdf = prefs.getString(PREF_PDF + c.id, null);
+        updatePdfUi();
         chatAdapter.notifyDataSetChanged();
         if (!messages.isEmpty()) chatList.scrollToPosition(messages.size() - 1);
         chatTitle.setText(c.title);
@@ -636,6 +665,7 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage(c.title)
                 .setPositiveButton("Delete", (d, w) -> {
                     chatStore.delete(c.id);
+                    prefs.edit().remove(PREF_PDF + c.id).apply();
                     if (c.id == currentConvId) resetCurrentChat();
                     refreshConversationList();
                 })
@@ -664,6 +694,8 @@ public class MainActivity extends AppCompatActivity {
         convSummary = "";
         convCovered = 0;
         clearActiveImage();
+        activePdf = null;
+        updatePdfUi();
         messages.clear();
         chatAdapter.notifyDataSetChanged();
         chatTitle.setText("New chat");
@@ -1100,12 +1132,17 @@ public class MainActivity extends AppCompatActivity {
         final String summary = convSummary;
         final int covered = convCovered;
         final boolean useMemory = useMemorySwitch.isChecked();
-        final boolean learn = learnFactsSwitch.isChecked();
-        final String sysPrompt = systemPrompt();
+        final String pdfName = activePdf;
+        final boolean learn = learnFactsSwitch.isChecked() && pdfName == null;
+        final String sysPrompt = pdfName == null ? systemPrompt()
+                : systemPrompt() + String.format(Locale.US, PDF_HINT, pdfName);
         final int maxNew = maxTokens();
         final float temp = temperature();
         final ContextBuilder.Budget budget = new ContextBuilder.Budget();
         budget.total = prefs.getInt("context_tokens", 1500);
+        if (pdfName != null) {                                // room for 2-3 excerpts
+            budget.memory = Math.max(budget.memory, Math.min(800, budget.total * 2 / 5));
+        }
         setGenerating(true);
         statusText.setText(image != null ? "Looking at the picture…" : "Thinking…");
 
@@ -1119,10 +1156,12 @@ public class MainActivity extends AppCompatActivity {
             if (emb != null) {
                 try {
                     vec = emb.embed(text);
-                    if (useMemory) {
+                    if (pdfName != null || useMemory) {
                         String q = ContextBuilder.retrievalQuery(text, history);
                         float[] qv = q.equals(text) ? vec : emb.embed(q);
-                        hits = store.search(q, qv, TOP_K, MIN_SIM);
+                        hits = pdfName != null
+                                ? store.searchDocument(pdfName, q, qv, PDF_TOP_K, PDF_MIN_SIM)
+                                : store.search(q, qv, TOP_K, MIN_SIM);
                     }
                 } catch (Exception ex) {
                     Log.e(TAG, "retrieval failed", ex);
@@ -1541,6 +1580,10 @@ public class MainActivity extends AppCompatActivity {
                 .setPositiveButton("Delete", (d, w) -> executor.execute(() -> {
                     if (item.id >= 0) store.deleteById(item.id);
                     else store.deleteSource(item.source);
+                    if (item.source != null && item.source.equals(activePdf)) {
+                        activePdf = null;
+                        runOnUiThread(this::updatePdfUi);
+                    }
                     runOnUiThread(this::refreshMemoryList);
                 }))
                 .setNegativeButton("Cancel", null)
@@ -1553,6 +1596,8 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage("This deletes every fact, chat memory and imported document.")
                 .setPositiveButton("Clear", (d, w) -> executor.execute(() -> {
                     store.clearAll();
+                    activePdf = null;
+                    runOnUiThread(this::updatePdfUi);
                     runOnUiThread(this::refreshMemoryList);
                 }))
                 .setNegativeButton("Cancel", null)
@@ -1569,8 +1614,9 @@ public class MainActivity extends AppCompatActivity {
         String name = queryName(uri);
         String lower = name == null ? "" : name.toLowerCase(Locale.ROOT);
         if (!(lower.endsWith(".txt") || lower.endsWith(".md")
-                || lower.endsWith(".markdown") || lower.endsWith(".csv"))) {
-            Toast.makeText(this, "For now only .txt, .md and .csv files are supported",
+                || lower.endsWith(".markdown") || lower.endsWith(".csv")
+                || lower.endsWith(".pdf"))) {
+            Toast.makeText(this, "Supported files: .pdf, .txt, .md and .csv",
                     Toast.LENGTH_LONG).show();
             return;
         }
@@ -1588,6 +1634,9 @@ public class MainActivity extends AppCompatActivity {
     private String indexDocument(Uri uri, String name) {
         Embedder e = embedder;
         if (e == null) return "Embedder not ready";
+        if (name != null && name.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
+            return indexPdf(uri, name, e);
+        }
         try {
             String text = readText(uri, 3_000_000);
             List<String> chunks = TextChunker.chunk(text, 700, 100);
@@ -1608,6 +1657,133 @@ public class MainActivity extends AppCompatActivity {
             Log.e(TAG, "indexDocument failed", ex);
             return "Indexing failed: " + ex.getMessage();
         }
+    }
+
+    /**
+     * PDF: extract text page by page (OCR for scanned pages), chunk each page separately
+     * and store the page number inside the chunk text, e.g. "[Page 12] ...".
+     * The embedding is made from the plain text, so the label does not disturb the search.
+     */
+    private String indexPdf(Uri uri, String name, Embedder e) {
+        return indexPdfResult(uri, name, e).message;
+    }
+
+    private static class PdfIndexResult {
+        final boolean ok;
+        final String message;
+        final int pages;
+
+        PdfIndexResult(boolean ok, String message, int pages) {
+            this.ok = ok; this.message = message; this.pages = pages;
+        }
+    }
+
+    private PdfIndexResult indexPdfResult(Uri uri, String name, Embedder e) {
+        try {
+            PdfTextExtractor.Result pdf = PdfTextExtractor.extract(this, uri,
+                    (page, total, ocr) -> {
+                        final String msg = (ocr ? "Scanning " : "Reading ") + name
+                                + "… page " + page + "/" + total;
+                        runOnUiThread(() -> loadingText.setText(msg));
+                    });
+
+            if (pdf.pages.isEmpty()) {
+                return new PdfIndexResult(false, "No readable text found in " + name, 0);
+            }
+
+            List<String> labels = new ArrayList<>();
+            List<String> plain = new ArrayList<>();
+            for (PdfTextExtractor.Page pg : pdf.pages) {
+                for (String piece : TextChunker.chunk(pg.text, 700, 100)) {
+                    labels.add("[Page " + pg.number + "] " + piece);
+                    plain.add(piece);
+                }
+            }
+
+            List<MemoryStore.NewItem> items = new ArrayList<>();
+            for (int i = 0; i < plain.size(); i++) {
+                final String progress = "Indexing " + name + "… " + (i + 1) + "/" + plain.size();
+                runOnUiThread(() -> loadingText.setText(progress));
+                items.add(new MemoryStore.NewItem(
+                        MemoryStore.DOCUMENT, name, labels.get(i), e.embed(plain.get(i)), 0.5f));
+            }
+            store.deleteSource(name);
+            int n = store.addAll(items);
+
+            StringBuilder msg = new StringBuilder("Indexed " + n + " chunks from " + name
+                    + " (" + pdf.pages.size() + " pages");
+            if (pdf.ocrPages > 0) msg.append(", ").append(pdf.ocrPages).append(" scanned");
+            msg.append(")");
+            if (pdf.truncated) {
+                msg.append(". Very large PDF: some pages were skipped");
+            }
+            return new PdfIndexResult(true, msg.toString(), pdf.pages.size());
+        } catch (Throwable ex) {
+            Log.e(TAG, "indexPdf failed", ex);
+            String m = ex.getMessage();
+            return new PdfIndexResult(false,
+                    "PDF failed: " + (m == null ? ex.getClass().getSimpleName() : m), 0);
+        }
+    }
+
+    // ================================================================ chat with an attached PDF
+
+    /** + button -> PDF: read it, index it, then tell the user to ask questions about it. */
+    private void attachPdf(Uri uri) {
+        final Embedder e = embedder;
+        if (e == null) {
+            Toast.makeText(this, "Set up the embedder files first (Settings → Open memory)",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (generating) {
+            Toast.makeText(this, "Wait for the answer to finish first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String picked = queryName(uri);
+        final String name = picked == null || picked.isEmpty() ? "document.pdf" : picked;
+
+        showLoading("Reading " + name + "…");
+        executor.execute(() -> {
+            PdfIndexResult r = indexPdfResult(uri, name, e);
+            runOnUiThread(() -> {
+                hideLoading();
+                if (!r.ok) {
+                    Toast.makeText(this, r.message, Toast.LENGTH_LONG).show();
+                    return;
+                }
+                ensureConversation(name);
+                activePdf = name;
+                prefs.edit().putString(PREF_PDF + currentConvId, name).apply();
+                updatePdfUi();
+
+                Message note = new Message(Message.AI, "📄 " + name + " is ready ("
+                        + r.pages + (r.pages == 1 ? " page" : " pages")
+                        + "). What would you like to know about it?");
+                messages.add(note);
+                chatAdapter.notifyItemInserted(messages.size() - 1);
+                chatList.scrollToPosition(messages.size() - 1);
+                chatStore.addMessage(currentConvId, note);
+                statusText.setText(r.message);
+                refreshMemoryList();
+                input.requestFocus();
+            });
+        });
+    }
+
+    private void detachPdf() {
+        if (currentConvId >= 0) prefs.edit().remove(PREF_PDF + currentConvId).apply();
+        activePdf = null;
+        updatePdfUi();
+        Toast.makeText(this, "PDF removed from this chat. Its text stays in Settings → Open memory.",
+                Toast.LENGTH_LONG).show();
+    }
+
+    private void updatePdfUi() {
+        if (pdfChip == null) return;
+        String name = activePdf;
+        pdfChip.setVisibility(name != null ? View.VISIBLE : View.GONE);
+        if (name != null) pdfChipName.setText("📄 " + name);
     }
 
     private String readText(Uri uri, int maxBytes) throws IOException {

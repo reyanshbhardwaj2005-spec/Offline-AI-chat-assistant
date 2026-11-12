@@ -205,6 +205,40 @@ public class MemoryStore extends SQLiteOpenHelper {
         return hits.size() > topK ? new ArrayList<>(hits.subList(0, topK)) : hits;
     }
 
+    /** True if at least one chunk of this document is stored. */
+    public synchronized boolean hasSource(String source) {
+        ensureLoaded();
+        for (Row r : cache) {
+            if (DOCUMENT.equals(r.type) && source.equals(r.source)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Search inside ONE document only (used when a PDF is attached to the chat).
+     * Meaning 75%, keywords 25%. No recency or importance, since every chunk is equally "old".
+     */
+    public synchronized List<Hit> searchDocument(String source, String queryText, float[] q,
+                                                 int topK, float minSim) {
+        ensureLoaded();
+        List<String> words = keywords(queryText);
+        List<Hit> hits = new ArrayList<>();
+        for (Row r : cache) {
+            if (!DOCUMENT.equals(r.type) || !source.equals(r.source)) continue;
+            float sim = dot(q, r.vec);
+            double kw = 0;
+            if (!words.isEmpty()) {
+                int found = 0;
+                for (String w : words) if (r.lower.contains(w)) found++;
+                kw = found / (double) words.size();
+            }
+            if (sim < minSim && kw < 0.34) continue;
+            hits.add(new Hit(r, sim, 0.75 * sim + 0.25 * kw));
+        }
+        Collections.sort(hits, (a, b) -> Double.compare(b.score, a.score));
+        return hits.size() > topK ? new ArrayList<>(hits.subList(0, topK)) : hits;
+    }
+
     public synchronized List<UiItem> listForUi() {
         ensureLoaded();
         List<UiItem> out = new ArrayList<>();

@@ -373,6 +373,41 @@
                 android:orientation="vertical"
                 android:padding="12dp">
 
+                <LinearLayout
+                    android:id="@+id/pdfChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginBottom="6dp"
+                    android:background="@drawable/bg_pdf_chip"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="4dp"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="4dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/pdfChipName"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="middle"
+                        android:maxWidth="240dp"
+                        android:singleLine="true"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/pdfChipRemove"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:padding="8dp"
+                        android:text="✕"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
                 <!-- Attachment preview (TOP of card, like Claude) -->
                 <FrameLayout
                     android:id="@+id/attachPreview"
